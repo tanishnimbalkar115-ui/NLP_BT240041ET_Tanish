@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AirSense — Real-Time AQI Prediction & Forecast</title>
+  <meta name="description" content="Monitor air quality in real-time, predict AQI using EPA standards, and view 7-day forecasts with interactive charts." />
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Leaflet.js Map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <!-- jsPDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <!-- App Styles -->
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- ========== HEADER ========== -->
+  <header id="app-header">
+    <div class="header-inner">
+      <a href="#" class="logo" id="logo">
+        <i class="fa-solid fa-wind"></i>
+        <span>AirSense</span>
+      </a>
+      <nav class="header-actions">
+        <div class="auto-refresh-toggle" id="auto-refresh-wrap">
+          <label class="switch-label" for="autoRefreshToggle">
+            <i class="fa-solid fa-arrows-rotate"></i>
+            <span class="sr-only-desktop">Auto-Refresh</span>
+          </label>
+          <label class="toggle-switch">
+            <input type="checkbox" id="autoRefreshToggle" />
+            <span class="slider"></span>
+          </label>
+        </div>
+        <button class="icon-btn" id="themeToggle" aria-label="Toggle dark mode">
+          <i class="fa-solid fa-moon"></i>
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- ========== HERO SECTION ========== -->
+  <section id="hero">
+    <div class="hero-overlay"></div>
+    <div class="hero-content">
+      <h1 class="hero-title">Breathe Smarter</h1>
+      <p class="hero-subtitle">Real-time air quality monitoring, EPA-standard AQI prediction, and 7-day forecasts — all in one place.</p>
+
+      <!-- Search Bar -->
+      <div class="search-container" id="search-container">
+        <div class="search-input-wrap">
+          <i class="fa-solid fa-magnifying-glass search-icon"></i>
+          <input type="text" id="cityInput" placeholder="Search any city..." autocomplete="off" />
+          <button class="btn-location" id="geolocateBtn" title="Use my location">
+            <i class="fa-solid fa-location-crosshairs"></i>
+          </button>
+        </div>
+        <!-- Autocomplete Dropdown -->
+        <ul class="autocomplete-list" id="autocompleteList"></ul>
+      </div>
+
+      <!-- Location Info -->
+      <div class="location-info hidden" id="locationInfo">
+        <span id="locationCity"><i class="fa-solid fa-city"></i> —</span>
+        <span id="locationCountry"><i class="fa-solid fa-earth-americas"></i> —</span>
+        <span id="locationCoords"><i class="fa-solid fa-map-pin"></i> —</span>
+      </div>
+    </div>
+    <!-- Animated particles -->
+    <div class="particles" id="particles"></div>
+  </section>
+
+  <!-- ========== LOADING SPINNER ========== -->
+  <div class="loader-overlay hidden" id="loader">
+    <div class="loader-spinner"></div>
+    <p>Fetching air quality data...</p>
+  </div>
+
+  <!-- ========== ERROR TOAST ========== -->
+  <div class="toast hidden" id="toast">
+    <i class="fa-solid fa-circle-exclamation"></i>
+    <span id="toastMsg">Error</span>
+    <button class="toast-close" id="toastClose">&times;</button>
+  </div>
+
+  <!-- ========== MODE TOGGLE ========== -->
+  <section id="mode-section" class="section">
+    <div class="container">
+      <div class="mode-toggle-wrap">
+        <button class="mode-btn active" id="modeLive" data-mode="live">
+          <i class="fa-solid fa-satellite-dish"></i> Live API Data
+        </button>
+        <button class="mode-btn" id="modeManual" data-mode="manual">
+          <i class="fa-solid fa-keyboard"></i> Manual Input
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== MANUAL INPUT FORM ========== -->
+  <section id="manual-section" class="section hidden">
+    <div class="container">
+      <div class="card manual-card">
+        <h2><i class="fa-solid fa-sliders"></i> Enter Pollutant Concentrations</h2>
+        <form id="manualForm" class="manual-grid" novalidate>
+          <div class="input-group">
+            <label for="inp_pm25">PM2.5 <small>(µg/m³)</small></label>
+            <input type="number" id="inp_pm25" min="0" max="1000" step="0.1" placeholder="e.g. 35.4" />
+          </div>
+          <div class="input-group">
+            <label for="inp_pm10">PM10 <small>(µg/m³)</small></label>
+            <input type="number" id="inp_pm10" min="0" max="1000" step="0.1" placeholder="e.g. 154" />
+          </div>
+          <div class="input-group">
+            <label for="inp_no2">NO₂ <small>(ppb)</small></label>
+            <input type="number" id="inp_no2" min="0" max="2100" step="0.1" placeholder="e.g. 53" />
+          </div>
+          <div class="input-group">
+            <label for="inp_so2">SO₂ <small>(ppb)</small></label>
+            <input type="number" id="inp_so2" min="0" max="1100" step="0.1" placeholder="e.g. 35" />
+          </div>
+          <div class="input-group">
+            <label for="inp_co">CO <small>(ppm)</small></label>
+            <input type="number" id="inp_co" min="0" max="60" step="0.1" placeholder="e.g. 4.4" />
+          </div>
+          <div class="input-group">
+            <label for="inp_o3">O₃ <small>(ppb)</small></label>
+            <input type="number" id="inp_o3" min="0" max="700" step="0.1" placeholder="e.g. 54" />
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary" id="predictBtn">
+              <i class="fa-solid fa-calculator"></i> Predict AQI
+            </button>
+            <button type="reset" class="btn btn-outline" id="resetBtn">
+              <i class="fa-solid fa-rotate-left"></i> Reset
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== RESULTS SECTION ========== -->
+  <section id="results-section" class="section hidden">
+    <div class="container">
+      <h2 class="section-title"><i class="fa-solid fa-chart-simple"></i> AQI Results</h2>
+
+      <div class="results-grid">
+        <!-- AQI Gauge Card -->
+        <div class="card gauge-card">
+          <canvas id="gaugeCanvas" width="280" height="180"></canvas>
+          <div class="aqi-value-display">
+            <span class="aqi-number" id="aqiValue">—</span>
+            <span class="aqi-label" id="aqiCategory">—</span>
+          </div>
+        </div>
+
+        <!-- Info Card -->
+        <div class="card info-card">
+          <div class="info-row">
+            <i class="fa-solid fa-heart-pulse"></i>
+            <div>
+              <h3>Health Advisory</h3>
+              <p id="healthAdvisory">Search a city or enter pollutant values to see results.</p>
+            </div>
+          </div>
+          <div class="info-row">
+            <i class="fa-solid fa-smog"></i>
+            <div>
+              <h3>Dominant Pollutant</h3>
+              <p id="dominantPollutant">—</p>
+            </div>
+          </div>
+          <div class="info-row">
+            <i class="fa-solid fa-clock"></i>
+            <div>
+              <h3>Last Updated</h3>
+              <p id="lastUpdated">—</p>
+            </div>
+          </div>
+          <button class="btn btn-accent" id="downloadPdf">
+            <i class="fa-solid fa-file-pdf"></i> Download Report
+          </button>
+        </div>
+      </div>
+
+      <!-- Pollutant Cards -->
+      <div class="pollutant-grid" id="pollutantGrid">
+        <!-- Dynamically populated -->
+      </div>
+
+      <!-- Data Source Disclaimer -->
+      <div class="disclaimer-card" id="disclaimerCard">
+        <i class="fa-solid fa-circle-info"></i>
+        <p><strong>Data Source Notice:</strong> AQI values are calculated using the <strong>US EPA standard</strong> based on atmospheric model data from <strong>CAMS (Copernicus)</strong> via Open-Meteo. Values may differ from local monitoring stations (e.g., CPCB, SAFAR, IQAir, Google) which use ground-level sensors and may follow national AQI standards.</p>
+      </div>
+    </div>
+  </section>
+  <!-- ========== WEATHER SECTION ========== -->
+  <section id="weather-section" class="section hidden">
+    <div class="container">
+      <h2 class="section-title"><i class="fa-solid fa-cloud-sun"></i> Current Weather</h2>
+      <div class="weather-grid">
+        <!-- Main Weather Card -->
+        <div class="card weather-main-card">
+          <div class="weather-header">
+            <div class="weather-icon-wrap">
+              <span class="weather-emoji" id="weatherEmoji">☀️</span>
+            </div>
+            <div class="weather-temp-wrap">
+              <span class="weather-temp" id="weatherTemp">--°C</span>
+              <span class="weather-desc" id="weatherDesc">--</span>
+              <span class="weather-feels" id="weatherFeels">Feels like --°C</span>
+            </div>
+          </div>
+          <div class="weather-minmax">
+            <span id="weatherHigh"><i class="fa-solid fa-arrow-up" style="color:#e74c3c"></i> --°C</span>
+            <span id="weatherLow"><i class="fa-solid fa-arrow-down" style="color:#3498db"></i> --°C</span>
+          </div>
+        </div>
+
+        <!-- Weather Details Grid -->
+        <div class="card weather-details-card">
+          <div class="weather-detail-item">
+            <i class="fa-solid fa-droplet"></i>
+            <div>
+              <span class="wd-label">Humidity</span>
+              <span class="wd-value" id="weatherHumidity">--%</span>
+            </div>
+          </div>
+          <div class="weather-detail-item">
+            <i class="fa-solid fa-wind"></i>
+            <div>
+              <span class="wd-label">Wind</span>
+              <span class="wd-value" id="weatherWind">-- km/h</span>
+            </div>
+          </div>
+          <div class="weather-detail-item">
+            <i class="fa-solid fa-sun"></i>
+            <div>
+              <span class="wd-label">UV Index</span>
+              <span class="wd-value" id="weatherUV">--</span>
+            </div>
+          </div>
+          <div class="weather-detail-item">
+            <i class="fa-solid fa-cloud-rain"></i>
+            <div>
+              <span class="wd-label">Precipitation</span>
+              <span class="wd-value" id="weatherPrecip">-- mm</span>
+            </div>
+          </div>
+          <div class="weather-detail-item">
+            <i class="fa-solid fa-compass"></i>
+            <div>
+              <span class="wd-label">Wind Dir</span>
+              <span class="wd-value" id="weatherWindDir">--</span>
+            </div>
+          </div>
+          <div class="weather-detail-item">
+            <i class="fa-regular fa-sun"></i>
+            <div>
+              <span class="wd-label">Sunrise / Sunset</span>
+              <span class="wd-value" id="weatherSunrise">-- / --</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Weather-AQI Impact Note -->
+      <div class="card weather-impact-card" id="weatherImpactCard">
+        <i class="fa-solid fa-lightbulb"></i>
+        <div>
+          <h3>Weather & Air Quality Impact</h3>
+          <p id="weatherImpactText">Weather conditions directly affect air quality. High humidity and low wind speeds can trap pollutants near the ground.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== AQI MAP SECTION ========== -->
+  <section id="map-section" class="section">
+    <div class="container">
+      <h2 class="section-title"><i class="fa-solid fa-map-location-dot"></i> India AQI Map</h2>
+      <p class="map-subtitle">Live air quality across major Indian cities. Click any marker for details.</p>
+      <div class="card map-card">
+        <div id="aqiMap"></div>
+        <div class="map-legend">
+          <span><i style="background:#2ecc71"></i> Good (0-50)</span>
+          <span><i style="background:#f1c40f"></i> Moderate (51-100)</span>
+          <span><i style="background:#e67e22"></i> USG (101-150)</span>
+          <span><i style="background:#e74c3c"></i> Unhealthy (151-200)</span>
+          <span><i style="background:#9b59b6"></i> Very Unhealthy (201-300)</span>
+          <span><i style="background:#7d1128"></i> Hazardous (301+)</span>
+        </div>
+        <button class="btn btn-primary" id="refreshMapBtn" style="margin-top:16px;">
+          <i class="fa-solid fa-arrows-rotate"></i> Refresh Map Data
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== CHARTS SECTION ========== -->
+  <section id="charts-section" class="section hidden">
+    <div class="container">
+      <h2 class="section-title"><i class="fa-solid fa-chart-area"></i> Visualizations</h2>
+      <div class="charts-grid">
+        <div class="card chart-card">
+          <h3>Pollutant Sub-Index Comparison</h3>
+          <canvas id="barChart"></canvas>
+        </div>
+        <div class="card chart-card">
+          <h3>7-Day AQI Forecast Trend</h3>
+          <canvas id="lineChart"></canvas>
+        </div>
+        <div class="card chart-card">
+          <h3>Pollutant Composition</h3>
+          <canvas id="doughnutChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== HISTORY SECTION ========== -->
+  <section id="history-section" class="section">
+    <div class="container">
+      <h2 class="section-title"><i class="fa-solid fa-clock-rotate-left"></i> Recent Searches</h2>
+      <div class="card">
+        <div class="table-wrap">
+          <table id="historyTable">
+            <thead>
+              <tr>
+                <th>City</th>
+                <th>AQI</th>
+                <th>Category</th>
+                <th>Dominant</th>
+                <th>Date</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="historyBody">
+              <tr class="empty-row">
+                <td colspan="6">No search history yet. Search a city to get started!</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== FOOTER ========== -->
+  <footer id="app-footer">
+    <div class="container footer-inner">
+      <p>&copy; 2026 AirSense &mdash; Air Quality Prediction Tool</p>
+      <p class="footer-note">Data: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CAMS satellite &amp; atmospheric models) &bull; Standard: US EPA AQI &bull; Weather: Open-Meteo Forecast API</p>
+      <p class="footer-note">Values may differ from ground-station sources like CPCB, SAFAR, or Google due to different data sources and AQI standards.</p>
+    </div>
+  </footer>
+
+  <!-- App Scripts -->
+  <script src="aqi-engine.js"></script>
+  <script src="weather.js"></script>
+  <script src="app.js"></script>
+  <script src="map.js"></script>
+</body>
+</html>
